@@ -1,5 +1,5 @@
 ﻿using DynamicData.Annotations;
-using Jvedio.Library.Encrypt;
+using Jvedio.Utils.Encrypt;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -9,134 +9,18 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using static Jvedio.GlobalVariable;
-using static Jvedio.Net;
+using Jvedio.Utils;
+using Jvedio.Utils.Net;
 
 namespace Jvedio
 {
-
-    public class Upgrade
-    {
-        public event EventHandler UpgradeCompleted;
-        public event EventHandler onProgressChanged;
-        public bool StopUpgrade = false;
-
-        public List<string> DownLoadList;
-        public string list_url = "https://hitchao.github.io/jvedioupdate/list";
-        public string file_url = "https://hitchao.github.io/jvedioupdate/File/";
-
-        private ProgressBUpdateEventArgs DownLoadProgress;
-        public void Start()
-        {
-            StopUpgrade = false;
-            DownLoadFromGithub();
-        }
-
-
-        public void Stop()
-        {
-            StopUpgrade = true;
-        }
-
-
-        private async Task<bool> GetDownLoadList()
-        {
-            (string content, int statusCode) = await Net.Http(list_url);
-            if (content == "") return false;
-            Dictionary<string, string> filemd5 = new Dictionary<string, string>();
-            foreach (var item in content.Split('\n'))
-            {
-                if (!string.IsNullOrEmpty(item))
-                {
-                    string[] info = item.Split(' ');
-                    if (!filemd5.ContainsKey(info[0])) filemd5.Add(info[0], info[1]);
-                }
-            }
-            List<string> filenamelist = filemd5.Keys.ToList();
-            DownLoadList = new List<string>();
-            filenamelist.ForEach(arg =>
-            {
-                string localfilepath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, arg);
-                if (File.Exists(localfilepath))
-                {
-                    //存在 => 校验
-                    if (Encrypt.GetMD5(localfilepath) != filemd5[arg])
-                    {
-                        DownLoadList.Add(arg);//md5 不一致 ，下载
-                    }
-                }
-                else
-                {
-                    DownLoadList.Add(arg); //不存在 =>下载
-                }
-            });
-            return true;
-        }
-
-
-        private void WriteFile(byte[] filebyte, string savepath)
-        {
-
-            FileInfo fileInfo = new FileInfo(savepath);
-
-            if (fileInfo.Directory.FullName.IndexOf("en") >= 0)
-            {
-                Console.WriteLine(123);
-            }
-
-            if (!Directory.Exists(fileInfo.Directory.FullName)) Directory.CreateDirectory(fileInfo.Directory.FullName);//创建文件夹
-            try
-            {
-                using (var fs = new FileStream(fileInfo.FullName, FileMode.Create, FileAccess.Write))
-                {
-                    fs.Write(filebyte, 0, filebyte.Length);
-                }
-            }
-            catch { }
-
-        }
-
-
-        private async void DownLoadFromGithub()
-        {
-            string temppath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Temp");
-            //新建临时文件夹
-            if (!Directory.Exists(temppath)) Directory.CreateDirectory(temppath);
-            await GetDownLoadList();
-            DownLoadProgress = new ProgressBUpdateEventArgs();
-            DownLoadProgress.maximum = DownLoadList.Count;
-            foreach (var item in DownLoadList)
-            {
-                if (StopUpgrade) return;
-                Console.WriteLine(item);
-                string filepath = Path.Combine(temppath, item);
-                if (!File.Exists(filepath))
-                {
-                    var (filebytes, cookies, statuscode) = await  AsyncDownLoadFile(file_url + item);
-                    //写入本地
-                    if (filebytes != null) WriteFile(filebytes, filepath);
-                }
-                DownLoadProgress.value += 1;
-                if(!StopUpgrade) onProgressChanged?.Invoke(this, DownLoadProgress);
-            }
-
-            //复制文件并覆盖 执行 cmd 命令
-            UpgradeCompleted?.Invoke(this, null);
-        }
-
-
-    }
-
-
-   
-
-
+    // 明明很简单的东西，现在居然有点看不懂了
 
     /// <summary>
     /// 下载类，分为FC2和非FC2，前者同时下载2个，后者同时下载3个
     /// </summary>
     public class DownLoader
     {
-        public static int DelayInvterval = 1000;//暂停 1 s
         public static int SemaphoreNum = 3;
         public static int SemaphoreFC2Num = 1;
         public DownLoadState State = DownLoadState.DownLoading;
@@ -146,10 +30,7 @@ namespace Jvedio
         private Semaphore SemaphoreFC2;
         public DownLoadProgress downLoadProgress;
 
-        protected object LockDataBase;
-
-
-        public bool enforce = false;
+        public bool enforce = false;//是否强制下载信息
         private bool Cancel { get; set; }
         public List<Movie> Movies { get; set; }
 
@@ -160,12 +41,12 @@ namespace Jvedio
         /// <summary>
         /// 初始化 DownLoader
         /// </summary>
-        /// <param name="_movies">非 FC2 影片</param>
-        /// <param name="_moviesFC2">FC2 影片</param>
-        public DownLoader(List<Movie> _movies, List<Movie> _moviesFC2)
+        /// <param name="movies">非 FC2 影片</param>
+        /// <param name="moviesFC2">FC2 影片</param>
+        public DownLoader(List<Movie> movies, List<Movie> moviesFC2)
         {
-            Movies = _movies;
-            MoviesFC2 = _moviesFC2;
+            Movies = movies;
+            MoviesFC2 = moviesFC2;
             Semaphore = new Semaphore(SemaphoreNum, SemaphoreNum);
             SemaphoreFC2 = new Semaphore(SemaphoreFC2Num, SemaphoreFC2Num);
             downLoadProgress = new DownLoadProgress() { lockobject = new object(), value = 0, maximum = Movies.Count + MoviesFC2.Count };//所有影片的进度
@@ -196,7 +77,6 @@ namespace Jvedio
         public void StartThread()
         {
             if (Movies.Count == 0 & MoviesFC2.Count == 0) { this.State = DownLoadState.Completed; return; }
-            LockDataBase = new object();
             for (int i = 0; i < Movies.Count; i++)
             {
                 Thread threadObject = new Thread(DownLoad);
@@ -219,34 +99,54 @@ namespace Jvedio
         private async void DownLoad(object o)
         {
 
-            //下载信息=>下载图片
+            //下载信息
             Movie movie = o as Movie;
-            if (movie.id.ToUpper().StartsWith("FC2")) SemaphoreFC2.WaitOne(); else Semaphore.WaitOne();//阻塞
+            if (movie.id.ToUpper().StartsWith("FC2")) 
+                SemaphoreFC2.WaitOne(); 
+            else 
+                Semaphore.WaitOne();//阻塞
             if (Cancel || string.IsNullOrEmpty(movie.id))
             {
-                if (movie.id.ToUpper().StartsWith("FC2")) SemaphoreFC2.Release(); else Semaphore.Release();
+                if (movie.id.ToUpper().StartsWith("FC2")) 
+                    SemaphoreFC2.Release(); 
+                else 
+                    Semaphore.Release();
                 return;
             }
-            bool success; string resultMessage;
+
             //下载信息
             State = DownLoadState.DownLoading;
-            if (Net.IsToDownLoadInfo(movie) || enforce)
+            if (movie.IsToDownLoadInfo() || enforce)
             {
                 //满足一定条件才下载信息
-                (success, resultMessage) = await Task.Run(() => { return Net.DownLoadFromNet(movie); });
-                InfoUpdate?.Invoke(this, new InfoUpdateEventArgs() { Movie = movie, progress = downLoadProgress.value, Success = success });//委托到主界面显示
-                if (!success) MessageCallBack?.Invoke(this, new MessageCallBackEventArgs($" {movie.id} {Jvedio.Language.Resources.DownloadMessageFailFor}：{(resultMessage.ToStatusMessage())}"));
+                HttpResult httpResult = await MyNet.DownLoadFromNet(movie); 
+                if(httpResult!=null )
+                {
+                    if (httpResult.Success)
+                    {
+                        InfoUpdate?.Invoke(this, new InfoUpdateEventArgs() { Movie = movie, progress = downLoadProgress.value, Success = httpResult.Success });//委托到主界面显示
+                    }
+                    else
+                    {
+                        string error = httpResult.Error != "" ? httpResult.Error : httpResult.StatusCode.ToStatusMessage();
+                        MessageCallBack?.Invoke(this, new MessageCallBackEventArgs($" {movie.id} {Jvedio.Language.Resources.DownloadMessageFailFor}：{error}"));
+                    }
+                }
             }
+            DetailMovie dm = DataBase.SelectDetailMovieById(movie.id);
 
-
-            DetailMovie dm = new DetailMovie();
-            dm = DataBase.SelectDetailMovieById(movie.id);
+            if (dm == null)
+            {
+                if (movie.id.ToUpper().StartsWith("FC2"))
+                    SemaphoreFC2.Release();
+                else
+                    Semaphore.Release();
+                return;
+            }
 
             if (!File.Exists(BasePicPath + $"BigPic\\{dm.id}.jpg") || enforce)
             {
-                string message2 = "";
-                (bool success2, string cookie2) = await Net.DownLoadImage(dm.bigimageurl, ImageType.BigImage, dm.id, callback: (sc) => { message2 = sc.ToString(); });//下载大图
-                //if (!success2) MessageCallBack?.Invoke(this, new MessageCallBackEventArgs($" {dm.id} 海报图下载失败，原因：{message2.ToStatusMessage()}"));
+                await MyNet.DownLoadImage(dm.bigimageurl, ImageType.BigImage, dm.id);//下载大图
             }
 
 
@@ -256,16 +156,16 @@ namespace Jvedio
             {
                 //复制海报图作为缩略图
                 if (File.Exists(BasePicPath + $"BigPic\\{dm.id}.jpg") && !File.Exists(BasePicPath + $"SmallPic\\{dm.id}.jpg"))
-                    File.Copy(BasePicPath + $"BigPic\\{dm.id}.jpg", BasePicPath + $"SmallPic\\{dm.id}.jpg");
+                {
+                    FileHelper.TryCopyFile(BasePicPath + $"BigPic\\{dm.id}.jpg", BasePicPath + $"SmallPic\\{dm.id}.jpg");
+                }
+
             }
             else
             {
                 if (!File.Exists(BasePicPath + $"SmallPic\\{dm.id}.jpg") || enforce)
                 {
-
-                    string message = "";
-                    (bool success1, string cookie) = await Net.DownLoadImage(dm.smallimageurl, ImageType.SmallImage, dm.id, callback: (sc) => { message = sc.ToString(); }); //下载小图
-                    //if (!success1) MessageCallBack?.Invoke(this, new MessageCallBackEventArgs($" {dm.id} 缩略图下载失败，原因：{message.ToStatusMessage()}"));
+                    await MyNet.DownLoadImage(dm.smallimageurl, ImageType.SmallImage, dm.id); //下载小图
                 }
             }
             dm.smallimage = ImageProcess.GetBitmapImage(dm.id, "SmallPic");
@@ -273,14 +173,13 @@ namespace Jvedio
             dm.bigimage = ImageProcess.GetBitmapImage(dm.id, "BigPic");
             lock (downLoadProgress.lockobject) downLoadProgress.value += 1;//完全下载完一个影片
             InfoUpdate?.Invoke(this, new InfoUpdateEventArgs() { Movie = dm, progress = downLoadProgress.value, state = State, Success = true });//委托到主界面显示
-            Task.Delay(DelayInvterval).Wait();//每个线程之间暂停
+            Task.Delay(Delay.MEDIUM).Wait();//每个线程之间暂停
             //取消阻塞
-            if (movie.id.ToUpper().IndexOf("FC2") >= 0) SemaphoreFC2.Release();
-            else Semaphore.Release();
-
+            if (movie.id.ToUpper().IndexOf("FC2") >= 0) 
+                SemaphoreFC2.Release();
+            else 
+                Semaphore.Release();
         }
-
-
     }
 
 
@@ -290,6 +189,14 @@ namespace Jvedio
         public double value = 0;
         public object lockobject;
 
+    }
+
+    public enum DownLoadState
+    {
+        DownLoading,
+        Completed,
+        Pause,
+        Fail
     }
 
     public class InfoUpdateEventArgs : EventArgs
@@ -354,12 +261,12 @@ namespace Jvedio
                     {
 
                         actress.id = db.GetInfoBySql($"select id from censored where name='{item.name}'");
-                        if (item.imageurl == null) { actress.imageurl = db.GetInfoBySql($"select smallpicurl from censored where id='{actress.id}'"); }
+                        if (item.imageurl == null) { actress.imageurl = db.GetInfoBySql($"select smallpicurl from censored where id='{actress.id}'").Replace("javcdn.pw", "javcdn.net"); }
 
                     }
                     else
                     {
-                        if (item.imageurl == null) { actress.imageurl = db.GetInfoBySql($"select smallpicurl from censored where id='{actress.id}'"); }
+                        if (item.imageurl == null) { actress.imageurl = db.GetInfoBySql($"select smallpicurl from censored where id='{actress.id}'").Replace("javcdn.pw", "javcdn.net"); }
                     }
                     db.CloseDB();
                     actresslist.Add(actress);
@@ -367,7 +274,6 @@ namespace Jvedio
             }
 
             ProgressBarUpdate.maximum = actresslist.Count;
-            //待修复
             for (int i = 0; i < actresslist.Count; i++)
             {
                 Console.WriteLine("开始进程 " + i);
@@ -394,11 +300,10 @@ namespace Jvedio
                 if (!string.IsNullOrEmpty(actress.imageurl))
                 {
                     string url = actress.imageurl;
-                    byte[] imageBytes = null;
-                    imageBytes = await Task.Run(() => { return Net.DownLoadFile(url).filebytes; });
-                    if (imageBytes != null)
+                    HttpResult streamResult= await new MyNet().DownLoadFile(url);
+                    if (streamResult != null)
                     {
-                        ImageProcess.SaveImage(actress.name, imageBytes, ImageType.ActorImage, url);
+                        ImageProcess.SaveImage(actress.name, streamResult.FileByte, ImageType.ActorImage, url);
                         actress.smallimage = ImageProcess.GetBitmapImage(actress.name, "Actresses");
                     }
 
@@ -408,16 +313,16 @@ namespace Jvedio
                 success = await Task.Run(() =>
                 {
                     Task.Delay(300).Wait();
-                    return Net.DownActress(actress.id, actress.name, callback: (message) => { MessageCallBack?.Invoke(this, new MessageCallBackEventArgs(message)); });
+                    return MyNet.DownLoadActress(actress.id, actress.name, callback: (message) => { MessageCallBack?.Invoke(this, new MessageCallBackEventArgs(message)); });
                 });
 
-                if (success) actress = DataBase.SelectInfoFromActress(actress);
+                if (success) actress = DataBase.SelectInfoByActress(actress);
                 ProgressBarUpdate.value += 1;
                 InfoUpdate?.Invoke(this, new ActressUpdateEventArgs() { Actress = actress, progressBarUpdate = ProgressBarUpdate, state = State });
             }
-            catch (Exception e)
+            catch (Exception ex)
             {
-
+                Console.WriteLine(ex.Message);
             }
             finally
             {

@@ -1,4 +1,5 @@
 ﻿
+using Jvedio.Utils.Encrypt;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -11,28 +12,50 @@ using System.Threading.Tasks;
 
 namespace Jvedio
 {
+    //https://ai.youdao.com/DOCSIRMA/html/%E8%87%AA%E7%84%B6%E8%AF%AD%E8%A8%80%E7%BF%BB%E8%AF%91/API%E6%96%87%E6%A1%A3/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1/%E6%96%87%E6%9C%AC%E7%BF%BB%E8%AF%91%E6%9C%8D%E5%8A%A1-API%E6%96%87%E6%A1%A3.html
     public static class Translate
     {
-        public static string Youdao_appKey ;
-        public static string Youdao_appSecret ;
+        public static string Youdao_appKey;
+        public static string Youdao_appSecret;
+
+
 
         public static void InitYoudao()
         {
-            Youdao_appKey = Properties.Settings.Default.TL_YOUDAO_APIKEY.Replace(" ","");
+            Youdao_appKey = Properties.Settings.Default.TL_YOUDAO_APIKEY.Replace(" ", "");
             Youdao_appSecret = Properties.Settings.Default.TL_YOUDAO_SECRETKEY.Replace(" ", "");
         }
 
 
-        public static  Task<string>  Youdao(string q)
+        public static Task<string> Youdao(string q)
         {
-            return Task.Run(() => {
+            string from = "auto";
+            string to = "zh-CHS";
+            string language = Jvedio.Properties.Settings.Default.Language;
+            switch (language)
+            {
+
+                case "中文":
+                    to = "zh-CHS";
+                    break;
+                case "English":
+                    to = "en";
+                    break;
+                case "日本語":
+                    to = "ja";
+                    break;
+                default:
+                    break;
+            }
+            return Task.Run(() =>
+            {
                 InitYoudao();
                 Dictionary<String, String> dic = new Dictionary<String, String>();
                 string url = "https://openapi.youdao.com/api";
 
                 string salt = DateTime.Now.Millisecond.ToString();
-                dic.Add("from", "auto");
-                dic.Add("to", "zh-CHS");
+                dic.Add("from", from);
+                dic.Add("to", to);
                 dic.Add("signType", "v3");
                 TimeSpan ts = (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc));
                 long millis = (long)ts.TotalMilliseconds;
@@ -44,7 +67,16 @@ namespace Jvedio
                 dic.Add("appKey", Youdao_appKey);
                 dic.Add("salt", salt);
                 dic.Add("sign", sign);
-                return GetYoudaoResult(Post(url, dic));
+                try
+                {
+                    return GetYoudaoResult(Post(url, dic));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    return "";
+                }
+
             });
 
         }
@@ -54,7 +86,7 @@ namespace Jvedio
             if (content.IndexOf("translation") < 0) return "";
             string pattern = @"""translation"":\["".+""\]";
             string result = Regex.Match(content, pattern).Value;
-            return result.Replace("\"translation\":[\"","").Replace("\"]","");
+            return result.Replace("\"translation\":[\"", "").Replace("\"]", "");
         }
 
 
@@ -147,24 +179,6 @@ namespace Jvedio
         }
 
 
-    //public static async  Task<string> Baidu(string query)
-    //    {
-    //        string appid = "20200812000541310";
-    //        string pwd = "zIxOVdtdAPXkJFyLg4Bf";
-    //        string salt = GetRandomString(10);
-    //        string sign = GenerateSign(query, appid, pwd, salt);
-    //        var client = new RestClient("http://api.fanyi.baidu.com");
-    //        var request = new RestRequest("/api/trans/vip/translate", Method.GET);
-    //        request.AddParameter("q", query);
-    //        request.AddParameter("from", "auto");
-    //        request.AddParameter("to", "zh");
-    //        request.AddParameter("appid", appid);
-    //        request.AddParameter("salt", salt);
-    //        request.AddParameter("sign", sign);
-    //        IRestResponse response = client.Execute(request);
-    //        return GetResult(response.Content);
-    //    }
-
 
         public static string GetResult(string content)
         {
@@ -196,30 +210,11 @@ namespace Jvedio
             //http://api.fanyi.baidu.com/doc/21
             //appid+q+salt+密钥 
             string r = appid + query + salt + pwd;
-            return FileProcess.CalculateMD5Hash(r);
+            return Encrypt.CalculateMD5Hash(r);
         }
 
 
 
     }
 
-    public class Youdao
-    {
-
-        public string tSpeakUrl { get; set; }
-
-        public string requestId { get; set; }
-        public string query { get; set; }
-
-        public string translation { get; set; }
-
-        public string errorCode { get; set; }
-        public string dict { get; set; }
-        public string webdict { get; set; }
-        public string l { get; set; }
-
-        public bool isWord { get; set; }
-        public string speakUrl { get; set; }
-
-    }
 }

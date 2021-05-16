@@ -14,7 +14,6 @@ namespace Jvedio
     public static class AccessToken
 
     {
-        
         private static string clientId;// 百度云中开通对应服务应用的 API Key 建议开通应用的时候多选服务
         private static string clientSecret; // 百度云中开通对应服务应用的 Secret Key
 
@@ -76,6 +75,7 @@ namespace Jvedio
             request.Method = "post";
             request.KeepAlive = true;
             string base64Str =ImageProcess. ImageToBase64(bitmap);
+            if (base64Str == null) return "";
             //Console.WriteLine(base64Str);
             string str = "{\"image\":\"" + base64Str +   "\",\"image_type\":\"BASE64\",\"face_field\":\"age,beauty,expression,face_shape,gender,glasses,landmark,landmark150,race,quality,eye_status,emotion,face_type,mask,spoofing\",\"max_face_num\":1,\"face_type\":\"LIVE\",\"liveness_control\":\"NONE\"}";
             byte[] buffer = encoding.GetBytes(str);
@@ -122,13 +122,6 @@ namespace Jvedio
     {
         public static string FaceJson;
 
-        public static void Init()
-        {
-            using(StreamReader sr=new StreamReader(@"D:\2020\VS Project\Jvedio\Jvedio(WPF)\Jvedio\Jvedio\资料\AI\AI.txt"))
-            {
-                FaceJson = sr.ReadToEnd();
-            }
-        }
 
         public static (Dictionary<string, string>,Int32Rect) Parse(string json)
         {
@@ -187,13 +180,5 @@ namespace Jvedio
                 Console.WriteLine(keyValuePair.Key + "：" + keyValuePair.Value);
             }
         }
-
-
-
-
-
-
     }
-
-
 }

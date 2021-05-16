@@ -10,27 +10,27 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media;
 using static Jvedio.FileProcess;
 using static Jvedio.GlobalVariable;
+using Jvedio.Utils;
 
 namespace Jvedio
 {
-    /// <summary>
-    /// WindowStartUp.xaml 的交互逻辑
-    /// </summary>
+
     public partial class WindowStartUp : Window
     {
 
-        public CancellationTokenSource cts;
-        public CancellationToken ct;
+        private CancellationTokenSource cts;
+        private CancellationToken ct;
+        private VieModel_StartUp vieModel_StartUp;
+        private Image optionImage;
+        private string beforeRename = "";
 
-        public VieModel_StartUp vieModel_StartUp;
+
         public WindowStartUp()
         {
 
             InitializeComponent();
-
             vieModel_StartUp = new VieModel_StartUp();
             vieModel_StartUp.ListDatabase();
             this.DataContext = vieModel_StartUp;
@@ -39,118 +39,11 @@ namespace Jvedio
             cts.Token.Register(() => Console.WriteLine("取消任务"));
             ct = cts.Token;
 
-            if (File.Exists("upgrade.bat"))
-            {
-                try{ File.Delete("upgrade.bat"); } catch { }
-            }
-
-            if (Directory.Exists("Temp"))
-            {
-                try { Directory.Delete("Temp",true); } catch { }
-            }
-
+            FileHelper.TryDeleteFile("upgrade.bat");
+            FileHelper.TryDeleteDir("Temp");
         }
 
-
-
-
-
-
-        public static string InfoDataBasePath = AppDomain.CurrentDomain.BaseDirectory + "Info.sqlite";
-        public static string AIDataBasePath = AppDomain.CurrentDomain.BaseDirectory + "AI.sqlite";
-        public static string TranslateDataBasePath = AppDomain.CurrentDomain.BaseDirectory + "Translate.sqlite";
-
-
-        public async void LoadDataBase(object sender, MouseButtonEventArgs e)
-        {
-            //加载数据库
-            StackPanel stackPanel = sender as StackPanel;
-            TextBox TextBox = stackPanel.Children[1] as TextBox;
-
-            string name = TextBox.Text;
-            if (name?.ToLower() == "info")
-                Properties.Settings.Default.DataBasePath = AppDomain.CurrentDomain.BaseDirectory + "info.sqlite";
-            else if (name == Jvedio.Language.Resources.NewLibrary)
-            {
-                //重命名
-                TextBox.IsReadOnly = false;
-                TextBox.Text =Jvedio.Language.Resources.MyLibrary;
-                TextBox.Focus();
-                TextBox.SelectAll();
-                TextBox.Cursor = Cursors.IBeam;
-                return;
-            }
-            else
-                Properties.Settings.Default.DataBasePath = AppDomain.CurrentDomain.BaseDirectory + $"\\DataBase\\{name}.sqlite";
-
-
-            if (!File.Exists(Properties.Settings.Default.DataBasePath)) return;
-
-            SelectDbBorder.Visibility = Visibility.Hidden;
-
-            if (Properties.Settings.Default.ScanGivenPath)
-            {
-
-                await Task.Run(() =>
-                {
-                    try
-                    {
-                        this.Dispatcher.BeginInvoke(new Action(() => { statusText.Text = Jvedio.Language.Resources.Status_ScanDir; }), System.Windows.Threading.DispatcherPriority.Render);
-                        List<string> filepaths = Scan.ScanPaths(ReadScanPathFromConfig(Path.GetFileNameWithoutExtension(Properties.Settings.Default.DataBasePath)), ct);
-                        Scan.InsertWithNfo(filepaths, ct);
-
-                    }
-                    catch (Exception ex)
-                    {
-                        Logger.LogF(ex);
-                    }
-
-                }, cts.Token);
-
-            }
-
-
-            //启动主窗口
-            Main main = new Main();
-            statusText.Text = Jvedio.Language.Resources.Status_InitMovie;
-            try
-            {
-                main.InitMovie();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                Logger.LogE(ex);
-            }
-
-
-            main.Show();
-            this.Close();
-        }
-
-
-
-
-        public void ClearLogBefore(DateTime dateTime, string filepath)
-        {
-            if (!Directory.Exists(filepath)) return;
-            try
-            {
-                string[] files = Directory.GetFiles(filepath, "*.log", SearchOption.TopDirectoryOnly);
-                foreach (var file in files)
-                {
-                    DateTime.TryParse(file.Split('\\').Last().Replace(".log", ""), out DateTime date);
-                    if (date < dateTime) File.Delete(file);
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-
-
-        }
-        private void Window_Loaded(object sender, RoutedEventArgs e)
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
 
             statusText.Text = Jvedio.Language.Resources.Status_UpdateConfig;
@@ -168,123 +61,79 @@ namespace Jvedio
                 MessageBox.Show(ex.Message);
                 Logger.LogE(ex);
             }
-            statusText.Text = Jvedio.Language.Resources.Status_RepairConfig;
-            try
+
+            //复制原有的 info.sqlite
+            FileHelper.TryCreateDir("DataBase");
+            if (File.Exists("info.sqlite"))
             {
-                CheckFile(); //判断文件是否存在
-                CheckSettings();//修复设置错误
+                FileHelper.TryCopyFile("info.sqlite", "DataBase\\info.sqlite");
+                FileHelper.TryDeleteFile("info.sqlite");
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                Logger.LogE(ex);
-            }
-            if (!Directory.Exists(Properties.Settings.Default.BasePicPath)) Properties.Settings.Default.BasePicPath = AppDomain.CurrentDomain.BaseDirectory + "Pic\\";
 
 
-            statusText.Text = Jvedio.Language.Resources.Status_CreateDir;
+
+            CheckFile(); //判断文件是否存在
+            CheckSettings();//修复设置错误
+            CreateDir();//创建文件夹
+            SetSkin(Properties.Settings.Default.Themes);
+
+
             try
             {
-                if (!Directory.Exists("log")) { Directory.CreateDirectory("log"); }//创建 Log文件夹
-                if (!Directory.Exists("log\\scanlog")) { Directory.CreateDirectory("log\\scanlog"); }//创建 ScanLog 文件夹
-                if (!Directory.Exists("DataBase")) { Directory.CreateDirectory("DataBase"); }            //创建 DataBase 文件夹
-                if (!Directory.Exists("BackUp")) { Directory.CreateDirectory("BackUp"); }            //创建备份文件夹
-                SetSkin();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                Logger.LogE(ex);
-            }
-            statusText.Text = Jvedio.Language.Resources.Status_InitDatabase;
-            try
-            {
+                statusText.Text = Jvedio.Language.Resources.Status_InitDatabase;
                 InitDataBase();//初始化数据库
-                //InitJav321IDConverter();
-                //初始化参数
-                statusText.Text = Jvedio.Language.Resources.Status_InitID;
                 Identify.InitFanhaoList();
-                statusText.Text = Jvedio.Language.Resources.Status_InitScan;
                 Scan.InitSearchPattern();
                 InitVariable();
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
                 Logger.LogE(ex);
             }
-            try
-            {
-                SaveScanPathToXml();
-                SaveServersToXml();
-                SaveRecentWatchedToXml();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show(ex.Message);
-                Logger.LogE(ex);
-            }
+
             try
             {
                 statusText.Text = Jvedio.Language.Resources.Status_ClearRecentWatch;
-                ClearDateBefore(DateTime.Now.AddDays(-10));
+                ClearDateBefore(-10);
                 statusText.Text = Jvedio.Language.Resources.Status_ClearLog;
-                ClearLogBefore(DateTime.Now.AddDays(-10), AppDomain.CurrentDomain.BaseDirectory + "log");
-                ClearLogBefore(DateTime.Now.AddDays(-10), AppDomain.CurrentDomain.BaseDirectory + "log\\NetWork");
-                ClearLogBefore(DateTime.Now.AddDays(-10), AppDomain.CurrentDomain.BaseDirectory + "log\\scanlog");
-                ClearLogBefore(DateTime.Now.AddDays(-10), AppDomain.CurrentDomain.BaseDirectory + "log\\file");
+                ClearLogBefore(-10, "log");
+                ClearLogBefore(-10, "log\\NetWork");
+                ClearLogBefore(-10, "log\\scanlog");
+                ClearLogBefore(-10, "log\\file");
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
                 Logger.LogE(ex);
             }
-            statusText.Text = Jvedio.Language.Resources.Status_InitNet;
+
             try
             {
 
-
-                Net.Init();
-                statusText.Text = Jvedio.Language.Resources.Status_CreateDir;
-                if (!Directory.Exists(BasePicPath + "ScreenShot\\")) { Directory.CreateDirectory(BasePicPath + "ScreenShot\\"); }
-                if (!Directory.Exists(BasePicPath + "SmallPic\\")) { Directory.CreateDirectory(BasePicPath + "SmallPic\\"); }
-                if (!Directory.Exists(BasePicPath + "BigPic\\")) { Directory.CreateDirectory(BasePicPath + "BigPic\\"); }
-                if (!Directory.Exists(BasePicPath + "ExtraPic\\")) { Directory.CreateDirectory(BasePicPath + "ExtraPic\\"); }
-                if (!Directory.Exists(BasePicPath + "Actresses\\")) { Directory.CreateDirectory(BasePicPath + "Actresses\\"); }
-                if (!Directory.Exists(BasePicPath + "Gif\\")) { Directory.CreateDirectory(BasePicPath + "Gif\\"); }
+                BackUp("Magnets.sqlite");//备份文件
+                BackUp("AI.sqlite");//备份文件
+                BackUp("Translate.sqlite");//备份文件
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.Message);
                 Logger.LogE(ex);
             }
 
             //默认打开某个数据库
             if (Properties.Settings.Default.OpenDataBaseDefault && File.Exists(Properties.Settings.Default.DataBasePath))
             {
-                try
-                {
-                    OpenDefaultDatabase();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message);
-                    Logger.LogE(ex);
-                }
 
+                OpenDefaultDatabase();
                 //启动主窗口
                 Main main = new Main();
                 statusText.Text = Jvedio.Language.Resources.Status_InitMovie;
                 try
                 {
-                    main.InitMovie();
+                    await main.InitMovie();
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message);
                     Logger.LogE(ex);
                 }
-
                 main.Show();
                 this.Close();
             }
@@ -292,37 +141,149 @@ namespace Jvedio
             {
                 SelectDbBorder.Visibility = Visibility.Visible;
             }
-
-
         }
 
-        public async void OpenDefaultDatabase()
+
+
+
+        public async void LoadDataBase(object sender, MouseButtonEventArgs e)
         {
+            //加载数据库
+            StackPanel stackPanel = sender as StackPanel;
+            TextBox TextBox = stackPanel.Children[1] as TextBox;
+            if (!TextBox.IsReadOnly) return;
+
+            string name = TextBox.Text;
+            if (name == Jvedio.Language.Resources.NewLibrary)
+            {
+                //重命名
+                TextBox.IsReadOnly = false;
+                TextBox.Text = Jvedio.Language.Resources.MyLibrary;
+                TextBox.Focus();
+                TextBox.SelectAll();
+                TextBox.Cursor = Cursors.IBeam;
+                return;
+            }
+            else
+                Properties.Settings.Default.DataBasePath = AppDomain.CurrentDomain.BaseDirectory + $"\\DataBase\\{name}.sqlite";
+            if (!File.Exists(Properties.Settings.Default.DataBasePath)) return;
+            SelectDbBorder.Visibility = Visibility.Hidden;
             if (Properties.Settings.Default.ScanGivenPath)
             {
-
-                await Task.Run(() =>
+                try
                 {
-                    this.Dispatcher.BeginInvoke(new Action(() => { statusText.Text = Jvedio.Language.Resources.Status_ScanDir; }), System.Windows.Threading.DispatcherPriority.Render);
+                    await Task.Run(() =>
+                {
+
+                    this.Dispatcher.BeginInvoke(new Action(() => { statusText.Text = Jvedio.Language.Resources.Status_ScanDir; }), System.Windows.Threading.DispatcherPriority.Background);
                     List<string> filepaths = Scan.ScanPaths(ReadScanPathFromConfig(Path.GetFileNameWithoutExtension(Properties.Settings.Default.DataBasePath)), ct);
                     Scan.InsertWithNfo(filepaths, ct);
                 }, cts.Token);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogF(ex);
+                }
 
+            }
+
+
+            //启动主窗口
+            Main main = new Main();
+            statusText.Text = Jvedio.Language.Resources.Status_InitMovie;
+            try
+            {
+                await main.InitMovie();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message);
+                Logger.LogE(ex);
+            }
+            main.Show();
+            this.Close();
+        }
+
+
+
+
+        public void ClearLogBefore(int day, string filepath)
+        {
+            DateTime dateTime = DateTime.Now.AddDays(day);
+            filepath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filepath);
+            if (!Directory.Exists(filepath)) return;
+            try
+            {
+                string[] files = Directory.GetFiles(filepath, "*.log", SearchOption.TopDirectoryOnly);
+                foreach (var file in files)
+                {
+                    DateTime.TryParse(file.Split('\\').Last().Replace(".log", ""), out DateTime date);
+                    if (date < dateTime) FileHelper.TryDeleteFile(file);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+
+
+        public async void OpenDefaultDatabase()
+        {
+            try
+            {
+                if (Properties.Settings.Default.ScanGivenPath)
+                {
+
+                    await Task.Run(() =>
+                    {
+                        this.Dispatcher.BeginInvoke(new Action(() => { statusText.Text = Jvedio.Language.Resources.Status_ScanDir; }), System.Windows.Threading.DispatcherPriority.Render);
+                        List<string> filepaths = Scan.ScanPaths(ReadScanPathFromConfig(Path.GetFileNameWithoutExtension(Properties.Settings.Default.DataBasePath)), ct);
+                        Scan.InsertWithNfo(filepaths, ct);
+                    }, cts.Token);
+
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogE(ex);
             }
         }
 
         public void CheckSettings()
         {
-            if (!Enum.IsDefined(typeof(Skin), Properties.Settings.Default.Themes))
+            statusText.Text = Jvedio.Language.Resources.Status_RepairConfig;
+            try
             {
-                Properties.Settings.Default.Themes = Skin.黑色.ToString();
-                Properties.Settings.Default.Save();
+                if (!Enum.IsDefined(typeof(Skin), Properties.Settings.Default.Themes))
+                {
+                    Properties.Settings.Default.Themes = Skin.黑色.ToString();
+                    Properties.Settings.Default.Save();
+                }
+
+                if (!Enum.IsDefined(typeof(MyLanguage), Properties.Settings.Default.Language))
+                {
+                    Properties.Settings.Default.Language = MyLanguage.中文.ToString();
+                    Properties.Settings.Default.Save();
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogE(ex);
             }
 
-            if (!Enum.IsDefined(typeof(MyLanguage), Properties.Settings.Default.Language))
+        }
+
+        public void CreateDir()
+        {
+            statusText.Text = Jvedio.Language.Resources.Status_CreateDir;
+            foreach (var item in InitDirs)
             {
-                Properties.Settings.Default.Language = GlobalVariable.MyLanguage.中文.ToString();
-                Properties.Settings.Default.Save();
+                FileHelper.TryCreateDir(item);
+            }
+            foreach (var item in PicPaths)
+            {
+                FileHelper.TryCreateDir(Path.Combine(BasePicPath, item));
             }
 
         }
@@ -342,34 +303,27 @@ namespace Jvedio
                 this.Close();
             }
         }
+
+        private void BackUp(string filename)
+        {
+            FileHelper.TryCreateDir("BackUp");
+            if (File.Exists(filename))
+            {
+                string src = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filename);
+                string target = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "BackUp", filename);
+                if (!File.Exists(target))
+                {
+                    FileHelper.TryCopyFile(src, target);
+                }
+                else if (new FileInfo(target).Length < new FileInfo(src).Length)
+                {
+                    FileHelper.TryCopyFile(src, target, true);
+                }
+            }
+        }
+
         private void InitDataBase()
         {
-
-            if (!File.Exists(InfoDataBasePath))
-            {
-                MySqlite db = new MySqlite("Info");
-                db.CreateTable(DataBase.SQLITETABLE_MOVIE);
-                db.CreateTable(DataBase.SQLITETABLE_ACTRESS);
-                db.CreateTable(DataBase.SQLITETABLE_LIBRARY);
-                db.CreateTable(DataBase.SQLITETABLE_JAVDB);
-                db.CloseDB();
-            }
-            else
-            {
-                //是否具有表结构
-                MySqlite db = new MySqlite("Info");
-                if (!db.IsTableExist("movie") || !db.IsTableExist("actress") || !db.IsTableExist("library") || !db.IsTableExist("javdb"))
-                {
-                    db.CreateTable(DataBase.SQLITETABLE_MOVIE);
-                    db.CreateTable(DataBase.SQLITETABLE_ACTRESS);
-                    db.CreateTable(DataBase.SQLITETABLE_LIBRARY);
-                    db.CreateTable(DataBase.SQLITETABLE_JAVDB);
-                }
-                db.CloseDB();
-
-            }
-
-
             if (!File.Exists(AIDataBasePath))
             {
                 MySqlite db = new MySqlite("AI");
@@ -401,51 +355,16 @@ namespace Jvedio
                 db.CloseDB();
             }
 
-
-        }
-
-
-        public void SetSkin()
-        {
-            switch (Properties.Settings.Default.Themes)
+            if (!File.Exists("Magnets.sqlite"))
             {
-                case "黑色":
-                    Application.Current.Resources["BackgroundTitle"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22252A"));
-                    Application.Current.Resources["BackgroundMain"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#393D40"));
-                    Application.Current.Resources["BackgroundSide"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#323639"));
-                    Application.Current.Resources["BackgroundTab"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#383838"));
-                    Application.Current.Resources["BackgroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#18191B"));
-                    Application.Current.Resources["BackgroundMenu"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("Black"));
-                    Application.Current.Resources["ForegroundGlobal"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#AFAFAF"));
-                    Application.Current.Resources["ForegroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFFFF"));
-                    Application.Current.Resources["BorderBursh"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("Transparent"));
-                    break;
-
-                case "白色":
-                    Application.Current.Resources["BackgroundTitle"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D1D1D1"));
-                    Application.Current.Resources["BackgroundMain"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFFFFF"));
-                    Application.Current.Resources["BackgroundSide"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5E5E5"));
-                    Application.Current.Resources["BackgroundTab"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FFF5EE"));
-                    Application.Current.Resources["BackgroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EAEAE8"));
-                    Application.Current.Resources["BackgroundMenu"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("White"));
-                    Application.Current.Resources["ForegroundGlobal"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#555555"));
-                    Application.Current.Resources["ForegroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#000000"));
-                    Application.Current.Resources["BorderBursh"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("Gray"));
-                    break;
-
-                case "蓝色":
-                    Application.Current.Resources["BackgroundTitle"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0B72BD"));
-                    Application.Current.Resources["BackgroundMain"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#87CEFF"));
-                    Application.Current.Resources["BackgroundSide"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3DBEDE"));
-                    Application.Current.Resources["BackgroundTab"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#3DBEDE"));
-                    Application.Current.Resources["BackgroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#87CEEB"));
-                    Application.Current.Resources["BackgroundMenu"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("LightBlue"));
-                    Application.Current.Resources["ForegroundGlobal"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("White"));
-                    Application.Current.Resources["ForegroundSearch"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("White"));
-                    Application.Current.Resources["BorderBursh"] = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#95DCED"));
-                    break;
+                MySqlite db = new MySqlite("Magnets");
+                db.CreateTable(DataBase.SQLITETABLE_MAGNETS);
+                db.CloseDB();
             }
+
         }
+
+
 
 
 
@@ -458,33 +377,31 @@ namespace Jvedio
             }
         }
 
-        private void Button_Click_4(object sender, RoutedEventArgs e)
+        private void ImportDatabase(object sender, RoutedEventArgs e)
         {
             System.Windows.Forms.OpenFileDialog OpenFileDialog1 = new System.Windows.Forms.OpenFileDialog();
             OpenFileDialog1.Title = Jvedio.Language.Resources.ChooseDataBase;
-            OpenFileDialog1.InitialDirectory = AppDomain.CurrentDomain.BaseDirectory;
             OpenFileDialog1.Filter = $"Sqlite {Jvedio.Language.Resources.File}|*.sqlite";
             OpenFileDialog1.Multiselect = true;
-            OpenFileDialog1.RestoreDirectory = true;
             if (OpenFileDialog1.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             {
                 string[] names = OpenFileDialog1.FileNames;
                 foreach (var item in names)
                 {
                     string name = Path.GetFileNameWithoutExtension(item);
-                    if (name?.ToLower() == "info" || name == Jvedio.Language.Resources.NewLibrary) continue;
-                    if (!DataBase.IsProPerSqlite(item)) continue;
+                    if (name == Jvedio.Language.Resources.NewLibrary) continue;
+                    if (!DataBase.IsProperSqlite(item)) continue;
                     if (File.Exists($"DataBase\\{name}.sqlite"))
                     {
                         if (new Msgbox(this, $"{Jvedio.Language.Resources.Message_AlreadyExist} {name} {Jvedio.Language.Resources.IsToOverWrite} ？").ShowDialog() == true)
                         {
-                            File.Copy(item, $"DataBase\\{name}.sqlite", true);
+                            FileHelper.TryCopyFile(item, $"DataBase\\{name}.sqlite", true);
                             if (!vieModel_StartUp.DataBases.Contains(name)) vieModel_StartUp.DataBases.Add(name);
                         }
                     }
                     else
                     {
-                        File.Copy(item, $"DataBase\\{name}.sqlite", true);
+                        FileHelper.TryCopyFile(item, $"DataBase\\{name}.sqlite", true);
                         if (!vieModel_StartUp.DataBases.Contains(name)) vieModel_StartUp.DataBases.Add(name);
                     }
 
@@ -492,14 +409,14 @@ namespace Jvedio
             }
         }
 
-        private void Border_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        private void CloseWindow(object sender, RoutedEventArgs e)
         {
             this.Close();
         }
 
-        Image optionImage;
 
-        private void Image_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+
+        private void OpenPopup(object sender, MouseButtonEventArgs e)
         {
             optionImage = (sender as Border).Child as Image;
             OptionPopup.IsOpen = true;
@@ -512,9 +429,7 @@ namespace Jvedio
             StackPanel stackPanel = grid.Children.OfType<StackPanel>().First();
             TextBox TextBox = stackPanel.Children[1] as TextBox;
             string name = TextBox.Text;
-
-            if (name?.ToLower() == "info" || name == Jvedio.Language.Resources.NewLibrary) return;
-
+            if (name == Jvedio.Language.Resources.NewLibrary) return;
 
             if (new Msgbox(this, $"{Jvedio.Language.Resources.IsToDelete} {name}?").ShowDialog() == true)
             {
@@ -523,27 +438,17 @@ namespace Jvedio
                 if (File.Exists($"DataBase\\{name}.sqlite"))
                 {
                     //备份
-                    File.Copy($"DataBase\\{name}.sqlite", $"BackUp\\{dirpath}\\{name}.sqlite", true);
+                    FileHelper.TryCopyFile($"DataBase\\{name}.sqlite", $"BackUp\\{dirpath}\\{name}.sqlite", true);
                     //删除
-
-                    try
+                    if (FileHelper.TryDeleteFile($"DataBase\\{name}.sqlite"))
                     {
-                        File.Delete($"DataBase\\{name}.sqlite");
                         vieModel_StartUp.DataBases.Remove(name);
                     }
-                    catch(Exception ex)
-                    {
-                        MessageBox.Show(ex.Message);
-                    }
-                    
                 }
-
-
-
             }
         }
 
-        public string beforeRename = "";
+
 
         private void RenameSqlite(object sender, RoutedEventArgs e)
         {
@@ -551,10 +456,6 @@ namespace Jvedio
             Grid grid = border.Parent as Grid;
             StackPanel stackPanel = grid.Children.OfType<StackPanel>().First();
             TextBox TextBox = stackPanel.Children[1] as TextBox;
-            string name = TextBox.Text;
-
-            if (name?.ToLower() == "info") return;
-
             //重命名
             OptionPopup.IsOpen = false;
             TextBox.IsReadOnly = false;
@@ -585,7 +486,6 @@ namespace Jvedio
                 if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrEmpty(name) && !IsItemInList(name, vieModel_StartUp.DataBases) && name.IndexOfAny(Path.GetInvalidFileNameChars()) == -1)
                 {
                     //新建
-                    
                     MySqlite db = new MySqlite("DataBase\\" + name);
                     db.CreateTable(DataBase.SQLITETABLE_MOVIE);
                     db.CreateTable(DataBase.SQLITETABLE_ACTRESS);
@@ -593,7 +493,8 @@ namespace Jvedio
                     db.CreateTable(DataBase.SQLITETABLE_JAVDB);
                     db.CloseDB();
 
-                    if (vieModel_StartUp.DataBases.Contains(Jvedio.Language.Resources.NewLibrary)) vieModel_StartUp.DataBases.Remove( Jvedio.Language.Resources.NewLibrary);
+                    if (vieModel_StartUp.DataBases.Contains(Jvedio.Language.Resources.NewLibrary))
+                        vieModel_StartUp.DataBases.Remove(Jvedio.Language.Resources.NewLibrary);
                     textBox.IsReadOnly = true;
                     textBox.Cursor = Cursors.Hand;
 
@@ -602,7 +503,7 @@ namespace Jvedio
                 }
                 else
                 {
-                    textBox.Text =  Jvedio.Language.Resources.NewLibrary;
+                    textBox.Text = Jvedio.Language.Resources.NewLibrary;
                 }
             }
             else
@@ -624,9 +525,17 @@ namespace Jvedio
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine(ex.Message);
                             Logger.LogE(ex);
                         }
+                        for (int i = 0; i < vieModel_StartUp.DataBases.Count; i++)
+                        {
+                            if (vieModel_StartUp.DataBases[i].ToLower() == beforeRename.ToLower())
+                            {
+                                vieModel_StartUp.DataBases[i] = name;
+                                break;
+                            }
+                        }
+                        itemsControl.Items.Refresh();
                     }
                     else
                     {
@@ -640,12 +549,18 @@ namespace Jvedio
             textBox.IsReadOnly = true;
             textBox.Cursor = Cursors.Hand;
             textBox.TextAlignment = TextAlignment.Left;
-
         }
 
-        private bool IsItemInList(string str, ObservableCollection<string> list)
+
+        /// <summary>
+        /// 忽略大小写
+        /// </summary>
+        /// <param name="str"></param>
+        /// <param name="collection"></param>
+        /// <returns></returns>
+        private bool IsItemInList(string str, Collection<string> collection)
         {
-            foreach (var item in list)
+            foreach (var item in collection)
             {
                 if (item?.ToLower() == str.ToLower()) return true;
             }
@@ -674,6 +589,7 @@ namespace Jvedio
 
         private void SetAsDefault(object sender, RoutedEventArgs e)
         {
+            OptionPopup.IsOpen = false;
             Border border = optionImage.Parent as Border;
             Grid grid = border.Parent as Grid;
             StackPanel stackPanel = grid.Children.OfType<StackPanel>().First();
@@ -681,20 +597,25 @@ namespace Jvedio
             string name = TextBox.Text;
             Properties.Settings.Default.OpenDataBaseDefault = true;
             Properties.Settings.Default.DataBasePath = AppDomain.CurrentDomain.BaseDirectory + $"DataBase\\{name}.sqlite";
-            OptionPopup.IsOpen = false;
+
             LoadDataBase(stackPanel, new MouseButtonEventArgs(InputManager.Current.PrimaryMouseDevice, 0, MouseButton.Left));
         }
 
         private void OpenPath(object sender, RoutedEventArgs e)
         {
+            OptionPopup.IsOpen = false;
             Border border = optionImage.Parent as Border;
             Grid grid = border.Parent as Grid;
             StackPanel stackPanel = grid.Children.OfType<StackPanel>().First();
             TextBox TextBox = stackPanel.Children[1] as TextBox;
             string name = TextBox.Text;
-            string path= AppDomain.CurrentDomain.BaseDirectory + $"DataBase\\{name}.sqlite";
-            if (name.ToLower()=="info") path= AppDomain.CurrentDomain.BaseDirectory + $"DataBase\\{name}.sqlite";
-            if (File.Exists(path)) { Process.Start("explorer.exe", "/select, \"" + path + "\""); }
+            string path = AppDomain.CurrentDomain.BaseDirectory + $"DataBase\\{name}.sqlite";
+            FileHelper.TryOpenSelectPath(path);
+        }
+
+        private void LanguageChanged(object sender, SelectionChangedEventArgs e)
+        {
+            Console.WriteLine(e.AddedItems[0].ToString());
         }
     }
 }

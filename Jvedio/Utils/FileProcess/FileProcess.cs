@@ -6,18 +6,148 @@ using System.IO.Compression;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml;
 using static Jvedio.GlobalVariable;
+using Jvedio.Utils;
 
 namespace Jvedio
 {
+    /// <summary>
+    /// IO、文件处理
+    /// </summary>
     public static class FileProcess
     {
 
-        public static void ClearDateBefore(DateTime dateTime)
+        public static void SetSkin(string theme)
         {
+            if (theme == "黑色")
+            {
+                Application.Current.Resources["Color_BackgroundTitle"] = (Color)ColorConverter.ConvertFromString("#22252A");
+                Application.Current.Resources["Color_BackgroundMain"] = (Color)ColorConverter.ConvertFromString("#1B1B1F");
+                Application.Current.Resources["Color_BackgroundSide"] = (Color)ColorConverter.ConvertFromString("#101013");
+                Application.Current.Resources["Color_BackgroundTab"] = (Color)ColorConverter.ConvertFromString("#383838");
+                Application.Current.Resources["Color_BackgroundSearch"] = (Color)ColorConverter.ConvertFromString("#18191B");
+                Application.Current.Resources["Color_BackgroundMenu"] = (Color)ColorConverter.ConvertFromString("#252526");
+                Application.Current.Resources["Color_ForegroundGlobal"] = (Color)ColorConverter.ConvertFromString("#AFAFAF");
+                Application.Current.Resources["Color_ForegroundSearch"] = Colors.White;
+                Application.Current.Resources["Color_BorderBursh"] = Colors.Transparent;
+            }
+            else if (theme == "白色")
+            {
+                Application.Current.Resources["Color_BackgroundTitle"] = (Color)ColorConverter.ConvertFromString("#E2E3E5");
+                Application.Current.Resources["Color_BackgroundMain"] = (Color)ColorConverter.ConvertFromString("#F9F9F9");
+                Application.Current.Resources["Color_BackgroundSide"] = (Color)ColorConverter.ConvertFromString("#F2F3F4");
+                Application.Current.Resources["Color_BackgroundTab"] = (Color)ColorConverter.ConvertFromString("#FFF5EE");
+                Application.Current.Resources["Color_BackgroundSearch"] = (Color)ColorConverter.ConvertFromString("#D1D1D1");
+                Application.Current.Resources["Color_BackgroundMenu"] = Colors.White;
+                Application.Current.Resources["Color_ForegroundGlobal"] = (Color)ColorConverter.ConvertFromString("#555555");
+                Application.Current.Resources["Color_ForegroundSearch"] = Colors.Black;
+                Application.Current.Resources["Color_BorderBursh"] = Colors.Gray;
+            }
+            else if (theme == "蓝色")
+
+            {
+                Application.Current.Resources["Color_BackgroundTitle"] = (Color)ColorConverter.ConvertFromString("#0288D1");
+                Application.Current.Resources["Color_BackgroundMain"] = (Color)ColorConverter.ConvertFromString("#2BA2D2");
+                Application.Current.Resources["Color_BackgroundSide"] = (Color)ColorConverter.ConvertFromString("#03A9F5");
+                Application.Current.Resources["Color_BackgroundTab"] = (Color)ColorConverter.ConvertFromString("#0288D1");
+                Application.Current.Resources["Color_BackgroundSearch"] = (Color)ColorConverter.ConvertFromString("#87CEEB");
+                Application.Current.Resources["Color_BackgroundMenu"] = (Color)ColorConverter.ConvertFromString("#0288D1");
+                Application.Current.Resources["Color_ForegroundGlobal"] = Colors.White;
+                Application.Current.Resources["Color_ForegroundSearch"] = Colors.White;
+                Application.Current.Resources["Color_BorderBursh"] = (Color)ColorConverter.ConvertFromString("#95DCED");
+
+            }
+
+            Application.Current.Resources["BackgroundTitle"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundTitle"]);
+            Application.Current.Resources["BackgroundMain"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundMain"]);
+            Application.Current.Resources["BackgroundSide"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundSide"]);
+            Application.Current.Resources["BackgroundTab"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundTab"]);
+            Application.Current.Resources["BackgroundSearch"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundSearch"]);
+            Application.Current.Resources["BackgroundMenu"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BackgroundMenu"]);
+            Application.Current.Resources["ForegroundGlobal"] = new SolidColorBrush((Color)Application.Current.Resources["Color_ForegroundGlobal"]);
+            Application.Current.Resources["ForegroundSearch"] = new SolidColorBrush((Color)Application.Current.Resources["Color_ForegroundSearch"]);
+            Application.Current.Resources["BorderBursh"] = new SolidColorBrush((Color)Application.Current.Resources["Color_BorderBursh"]);
+
+        }
+        public static Window GetWindowByName(string name)
+        {
+            foreach (Window window in App.Current.Windows)
+            {
+                if (window.GetType().Name == name) return window;
+            }
+            return null;
+        }
+
+
+        public static void SaveInfo(Dictionary<string, string> Info, string id, int vt = 1)
+        {
+            //保存信息
+            if (!Info.ContainsKey("id")) Info.Add("id", id);
+            if (!Info.ContainsKey("vediotype")) Info.Add("vediotype", vt.ToString());
+            DataBase.UpdateInfoFromNet(Info);
+            DetailMovie detailMovie = DataBase.SelectDetailMovieById(id);
+            SaveNfo(detailMovie);
+        }
+
+        public static void SavePartialInfo(Dictionary<string, string> Info, string key, string id)
+        {
+            //保存信息
+            if (!Info.ContainsKey("id")) Info.Add("id", id);
+            if (!Info.ContainsKey(key)) return;
+            DataBase.UpdateMovieByID(id, key, Info[key], "String");
+            DetailMovie detailMovie = DataBase.SelectDetailMovieById(id);
+            SaveNfo(detailMovie);
+        }
+
+        public static string Unicode2String(string unicode)
+        {
+            return new Regex(@"\\u([0-9A-F]{4})", RegexOptions.IgnoreCase | RegexOptions.Compiled).Replace(
+                         unicode, x => string.Empty + Convert.ToChar(Convert.ToUInt16(x.Result("$1"), 16)));
+        }
+
+
+        public static void SaveNfo(DetailMovie detailMovie)
+        {
+            if (!Properties.Settings.Default.SaveInfoToNFO) return;
+            if (Directory.Exists(Properties.Settings.Default.NFOSavePath))
+            {
+                //固定位置
+                string savepath = Path.Combine(Properties.Settings.Default.NFOSavePath, $"{detailMovie.id}.nfo");
+                if (!File.Exists(savepath))
+                    NFOHelper.SaveToNFO(detailMovie, savepath);
+                else if (Properties.Settings.Default.OverriteNFO)
+                    NFOHelper.SaveToNFO(detailMovie, savepath);
+            }
+            else
+            {
+                //与视频同路径，视频存在才行
+                string path = detailMovie.filepath;
+                if (File.Exists(path))
+                {
+                    string savepath = Path.Combine(new FileInfo(path).DirectoryName, $"{detailMovie.id}.nfo");
+                    if (!File.Exists(savepath))
+                        NFOHelper.SaveToNFO(detailMovie, savepath);
+                    else if (Properties.Settings.Default.OverriteNFO)
+                        NFOHelper.SaveToNFO(detailMovie, savepath);
+                }
+            }
+
+        }
+
+
+        /// <summary>
+        /// 清除最近的观看记录
+        /// </summary>
+        /// <param name="dateTime"></param>
+        public static void ClearDateBefore(int day)
+        {
+            DateTime dateTime = DateTime.Now.AddDays(day);
             if (!File.Exists("RecentWatch")) return;
             RecentWatchedConfig recentWatchedConfig = new RecentWatchedConfig();
             for (int i = 1; i < 60; i++)
@@ -27,10 +157,17 @@ namespace Jvedio
             }
 
         }
-        public static List<Movie> FilterMovie(List<Movie> movies )
+
+        /// <summary>
+        /// 按照指定的条件筛选影片
+        /// </summary>
+        /// <param name="movies"></param>
+        /// <returns></returns>
+        public static List<Movie> FilterMovie(List<Movie> movies)
         {
             List<Movie> result = new List<Movie>();
             result.AddRange(movies);
+
             //可播放|不可播放
             if (Properties.Settings.Default.OnlyShowPlay)
             {
@@ -56,17 +193,24 @@ namespace Jvedio
                 result = result.Where(arg => arg.vediotype == vt).ToList();
             }
 
-            result = FilterImage(result);//有图|无图
+            result = FilterImage(result);
             return result;
         }
+
+        /// <summary>
+        /// 筛选有图、无图
+        /// </summary>
+        /// <param name="originMovies"></param>
+        /// <returns></returns>
 
         private static List<Movie> FilterImage(List<Movie> originMovies)
         {
             List<Movie> result = new List<Movie>();
             result.AddRange(originMovies);
 
-            ViewType ShowViewMode = ViewType.默认;
-            Enum.TryParse(Properties.Settings.Default.ShowViewMode, out ShowViewMode);
+
+            int.TryParse(Properties.Settings.Default.ShowViewMode, out int idx);
+            ViewType ShowViewMode = (ViewType)idx;
             MyImageType ShowImageMode = MyImageType.缩略图;
             if (Properties.Settings.Default.ShowImageMode.Length == 1)
             {
@@ -103,8 +247,6 @@ namespace Jvedio
                         }
                     }
                 }
-
-
             }
             else if (ShowViewMode == ViewType.无图)
             {
@@ -161,14 +303,6 @@ namespace Jvedio
             {
                 return true;
             }
-
-        }
-
-
-        public static bool IsLetter(char c)
-        {
-            if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) return true;
-            else return false;
         }
 
 
@@ -179,7 +313,12 @@ namespace Jvedio
             {
                 doc.Load(path);
             }
-            catch { return null; }
+            catch (Exception ex)
+            {
+                Logger.LogE(ex);
+                Console.WriteLine(ex.Message);
+                return null;
+            }
             XmlNode rootNode = doc.SelectSingleNode("movie");
             if (rootNode == null) return null;
             Movie movie = new Movie();
@@ -214,20 +353,17 @@ namespace Jvedio
                     continue;
                 }
             }
-            if (movie.id == "") { return null; }
-            //视频类型
+            if (string.IsNullOrEmpty(movie.id)) return null;
 
-            movie.vediotype = (int)Identify.GetVedioType(movie.id);
+            //视频类型
+            movie.vediotype = (int)Identify.GetVideoType(movie.id);
 
             //扫描视频获得文件大小
             if (File.Exists(path))
             {
                 string fatherpath = new FileInfo(path).DirectoryName;
                 string[] files = null;
-                try
-                {
-                    files = Directory.GetFiles(fatherpath, "*.*", SearchOption.TopDirectoryOnly);
-                }
+                try { files = Directory.GetFiles(fatherpath, "*.*", SearchOption.TopDirectoryOnly); }
                 catch (Exception e)
                 {
                     Logger.LogE(e);
@@ -235,7 +371,6 @@ namespace Jvedio
 
                 if (files != null)
                 {
-
                     var movielist = Scan.FirstFilter(files.ToList(), movie.id);
                     if (movielist.Count == 1 && !movielist[0].ToLower().EndsWith(".nfo"))
                     {
@@ -257,68 +392,55 @@ namespace Jvedio
 
             //tag
             XmlNodeList tagNodes = doc.SelectNodes("/movie/tag");
+            List<string> tags = new List<string>();
             if (tagNodes != null)
             {
-                string tags = "";
                 foreach (XmlNode item in tagNodes)
                 {
-                    if (item.InnerText != "") { tags += item.InnerText + " "; }
-
+                    if (item.InnerText != "") { tags.Add(item.InnerText.Replace(" ", "")); }
                 }
-                if (tags.Length > 0)
-                {
-
-                    if (movie.id.IndexOf("FC2") >= 0)
-                    {
-                        movie.genre = tags.Substring(0, tags.Length - 1);
-                    }
-                    else
-                    {
-                        movie.tag = tags.Substring(0, tags.Length - 1);
-                    }
-
-
-                }
+                if (movie.id.IndexOf("FC2") >= 0)
+                    movie.genre = string.Join(" ", tags);
+                else
+                    movie.tag = string.Join(" ", tags);
             }
 
             //genre
             XmlNodeList genreNodes = doc.SelectNodes("/movie/genre");
+            List<string> genres = new List<string>();
             if (genreNodes != null)
             {
-                string genres = "";
                 foreach (XmlNode item in genreNodes)
                 {
-                    if (item.InnerText != "") { genres += item.InnerText + " "; }
+                    if (item.InnerText != "") { genres.Add(item.InnerText); }
 
                 }
-                if (genres.Length > 0) { movie.genre = genres.Substring(0, genres.Length - 1); }
+                movie.genre = string.Join(" ", genres);
             }
 
             //actor
             XmlNodeList actorNodes = doc.SelectNodes("/movie/actor/name");
+            List<string> actors = new List<string>();
             if (actorNodes != null)
             {
-                string actors = "";
                 foreach (XmlNode item in actorNodes)
                 {
-                    if (item.InnerText != "") { actors += item.InnerText + " "; }
+                    if (item.InnerText != "") { actors.Add(item.InnerText); }
                 }
-                if (actors.Length > 0) { movie.actor = actors.Substring(0, actors.Length - 1); }
+                movie.actor = string.Join(" ", actors);
             }
 
             //fanart
             XmlNodeList fanartNodes = doc.SelectNodes("/movie/fanart/thumb");
+            List<string> extraimageurls = new List<string>();
             if (fanartNodes != null)
             {
-                string extraimageurl = "";
                 foreach (XmlNode item in fanartNodes)
                 {
-                    if (item.InnerText != "") { extraimageurl += item.InnerText + ";"; }
+                    if (item.InnerText != "") { extraimageurls.Add(item.InnerText); }
                 }
-                if (extraimageurl.Length > 0) { movie.extraimageurl = extraimageurl.Substring(0, extraimageurl.Length - 1); }
+                movie.extraimageurl = string.Join(" ", extraimageurls);
             }
-
-
             return movie;
         }
 
@@ -335,7 +457,7 @@ namespace Jvedio
                         if (!result.Contains(item)) result.Add(item);
                 }
             }
-            else { if (label.Length > 0) result.Add(label.Replace(" ", "")); }
+            else { if (label.Length > 0 && label.IndexOf(' ') < 0) result.Add(label.Replace(" ", "")); }
             return result;
         }
 
@@ -355,77 +477,11 @@ namespace Jvedio
         }
 
 
-        public static string CalculateMD5Hash(string input)
-        {
-            // step 1, calculate MD5 hash from input
-            MD5 md5 = System.Security.Cryptography.MD5.Create();
-            byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
-            byte[] hash = md5.ComputeHash(inputBytes);
-
-            // step 2, convert byte array to hex string
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < hash.Length; i++)
-            {
-                sb.Append(hash[i].ToString("X2"));
-            }
-            return sb.ToString().ToLower();
-        }
-
-        public static string GetFileMD5(string filename)
-        {
-            using (var md5 = MD5.Create())
-            {
-                using (var stream = File.OpenRead(filename))
-                {
-                    return BitConverter.ToString(md5.ComputeHash(stream)).Replace("-", "").ToLower();
-                }
-            }
-        }
-
-
-        /// <summary>
-        /// 加载 321 识别码与网站转换规则，多 30M 内存
-        /// </summary>
-        public static void InitJav321IDConverter()
-        {
-            //var jav321 = Resource_IDData.jav321;//来自于JavGo
-            var jav321 = 123;
-            Stream jav321_stream = new MemoryStream(jav321);
-            string str = "";
-            using (var zip = new ZipArchive(jav321_stream, ZipArchiveMode.Read))
-            {
-                ZipArchiveEntry zipArchiveEntry = zip.Entries[0];
-                using (StreamReader sr = new StreamReader(zipArchiveEntry.Open()))
-                {
-                    str = sr.ReadToEnd();
-                }
-            }
-            Jav321IDDict = new Dictionary<string, string>();
-            str = str.Replace("\r\n", "\n").ToUpper();
-            foreach (var item in str.Split('\n'))
-            {
-
-                if (item.IndexOf(",") > 0)
-                {
-                    if (Jav321IDDict.ContainsKey(item.Split(',')[1]))
-                    {
-                        Jav321IDDict[item.Split(',')[1]] = item.Split(',')[0];
-                    }
-                    else
-                    {
-                        Jav321IDDict.Add(item.Split(',')[1], item.Split(',')[0]);
-                    }
-                }
-            }
-
-
-        }
-
         public static void addTag(ref Movie movie)
         {
             //添加标签戳
             if (movie == null) return;
-            if (Identify.IsHDV(movie.filepath) || movie.genre?.IndexOfAnyString(TagStrings_HD) >= 0 || movie.tag?.IndexOfAnyString(TagStrings_HD) >= 0 || movie.label?.IndexOfAnyString(TagStrings_HD) >= 0) movie.tagstamps +=Jvedio.Language.Resources.HD;
+            if (Identify.IsHDV(movie.filepath) || movie.genre?.IndexOfAnyString(TagStrings_HD) >= 0 || movie.tag?.IndexOfAnyString(TagStrings_HD) >= 0 || movie.label?.IndexOfAnyString(TagStrings_HD) >= 0) movie.tagstamps += Jvedio.Language.Resources.HD;
             if (Identify.IsCHS(movie.filepath) || movie.genre?.IndexOfAnyString(TagStrings_Translated) >= 0 || movie.tag?.IndexOfAnyString(TagStrings_Translated) >= 0 || movie.label?.IndexOfAnyString(TagStrings_Translated) >= 0) movie.tagstamps += Jvedio.Language.Resources.Translated;
             if (Identify.IsFlowOut(movie.filepath) || movie.genre?.IndexOfAnyString(TagStrings_FlowOut) >= 0 || movie.tag?.IndexOfAnyString(TagStrings_FlowOut) >= 0 || movie.label?.IndexOfAnyString(TagStrings_FlowOut) >= 0) movie.tagstamps += Jvedio.Language.Resources.FlowOut;
         }
@@ -441,34 +497,6 @@ namespace Jvedio
 
         #region "配置xml"
 
-        /// <summary>
-        /// 读取原有的 config.ini到 xml
-        /// </summary>
-        public static void SaveScanPathToXml()
-        {
-            if (!File.Exists("DataBase\\Config.ini")) return;
-            Dictionary<string, StringCollection> DataBases = new Dictionary<string, StringCollection>();
-            using (StreamReader sr = new StreamReader(DataBaseConfigPath))
-            {
-                try
-                {
-                    string content = sr.ReadToEnd();
-                    List<string> info = content.Split('\n').ToList();
-                    info.ForEach(arg => {
-                        string name = arg.Split('?')[0];
-                        StringCollection stringCollection = new StringCollection();
-                        arg.Split('?')[1].Split('*').ToList().ForEach(path => { if (!string.IsNullOrEmpty(path)) stringCollection.Add(path); });
-                        if (!DataBases.ContainsKey(name)) DataBases.Add(name, stringCollection);
-                    });
-                }
-                catch { }
-            }
-            foreach (var item in DataBases)
-            {
-                SaveScanPathToConfig(item.Key, item.Value.Cast<string>().ToList());
-            }
-            File.Delete("DataBase\\Config.ini");
-        }
 
         public static StringCollection ReadScanPathFromConfig(string name)
         {
@@ -483,108 +511,7 @@ namespace Jvedio
         }
 
 
-        /// <summary>
-        /// 读取原有的 config.ini到 xml
-        /// </summary>
-        public static void SaveServersToXml()
-        {
-            if (!File.Exists("ServersConfig.ini")) return;
-            Dictionary<WebSite, Dictionary<string, string>> Servers = new Dictionary<WebSite, Dictionary<string, string>>();
-            using (StreamReader sr = new StreamReader("ServersConfig.ini"))
-            {
-                try
-                {
-                    string content = sr.ReadToEnd();
-                    List<string> rows = content.Split('\n').ToList();
-                    rows.ForEach(arg => {
-                        string name = arg.Split('?')[0];
-                        WebSite webSite = WebSite.None;
-                        Enum.TryParse<WebSite>(name, out webSite);
-                        string[] infos = arg.Split('?')[1].Split('*');
-                        Dictionary<string, string> info = new Dictionary<string, string>
-                        {
-                            { "Url", infos[0] },
-                            { "ServerName", infos[1] },
-                            { "LastRefreshDate", infos[2] }
-                        };
-                        if (!Servers.ContainsKey(webSite)) Servers.Add(webSite, info);
-                    });
-                }
-                catch { }
-            }
-            foreach (var item in Servers)
-            {
-                SaveServersInfoToConfig(item.Key, item.Value.Values.ToList<string>());
-            }
-            File.Delete("ServersConfig.ini");
-        }
 
-        public static void SaveServersInfoToConfig(WebSite webSite, List<string> infos)
-        {
-            Dictionary<string, string> info = new Dictionary<string, string>
-            {
-                { "Url", infos[0] },
-                { "ServerName", infos[1] },
-                { "LastRefreshDate", infos[2] }
-            };
-
-            ServerConfig serverConfig = new ServerConfig(webSite.ToString());
-            serverConfig.Save(info);
-        }
-
-        public static void DeleteServerInfoFromConfig(WebSite webSite)
-        {
-
-            if (!File.Exists("ServersConfig.ini")) return;
-            ServerConfig serverConfig = new ServerConfig(webSite.ToString());
-            serverConfig.Delete();
-        }
-
-        public static List<string> ReadServerInfoFromConfig(WebSite webSite)
-        {
-
-            if (!File.Exists("ServersConfig")) return new List<string>() { webSite.ToString(), "", "" };
-
-
-            List<string> result = new ServerConfig(webSite.ToString()).Read();
-            if (result.Count < 3) result = new List<string>() { webSite.ToString(), "", "" };
-            return result;
-        }
-
-
-
-        //最近观看
-
-        public static void SaveRecentWatchedToXml()
-        {
-            if (!File.Exists("RecentWatch.ini")) return;
-            Dictionary<string, List<string>> RecentWatchedes = new Dictionary<string, List<string>>();
-            using (StreamReader sr = new StreamReader("RecentWatch.ini"))
-            {
-                try
-                {
-                    string content = sr.ReadToEnd();
-                    List<string> rows = content.Split('\n').ToList();
-                    rows.ForEach(arg => {
-                        string date = arg.Split(':')[0];
-                        var IDs = arg.Split(':')[1].Split(',').ToList();
-                        if (!RecentWatchedes.ContainsKey(date)) RecentWatchedes.Add(date, IDs);
-                    });
-                }
-                catch { }
-            }
-            foreach (var item in RecentWatchedes)
-            {
-                SaveRecentWatchedToConfig(item.Key, item.Value);
-            }
-            File.Delete("RecentWatch.ini");
-        }
-
-        public static void SaveRecentWatchedToConfig(string date, List<string> IDs)
-        {
-            RecentWatchedConfig recentWatchedConfig = new RecentWatchedConfig(date);
-            recentWatchedConfig.Save(IDs);
-        }
 
         public static void ReadRecentWatchedFromConfig()
         {
@@ -602,19 +529,12 @@ namespace Jvedio
                     if (keyValuePair.Value.Count > 0)
                     {
                         List<string> IDs = keyValuePair.Value.Where(arg => !string.IsNullOrEmpty(arg)).ToList();
-
                         string date = keyValuePair.Key.Date.ToString("yyyy-MM-dd");
                         RecentWatchedConfig recentWatchedConfig = new RecentWatchedConfig(date);
                         recentWatchedConfig.Save(IDs);
                     }
                 }
             }
-
-
-
-
-
-
         }
 
 

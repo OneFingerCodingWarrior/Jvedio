@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using HandyControl.Tools;
 using Jvedio;
 
 namespace Jvedio
@@ -29,18 +30,18 @@ namespace Jvedio
             ProgramStarted = new EventWaitHandle(false, EventResetMode.AutoReset, "Jvedio", out createNew);
             if (!createNew)
             {
-                MessageBox.Show("Jvedio已经在运行！");
+                MessageBox.Show(Jvedio.Language.Resources.JvedioIsRunning);
                 App.Current.Shutdown();
                 Environment.Exit(0);
             }
 
 
-            //UI线程未捕获异常处理事件
-            this.DispatcherUnhandledException += new DispatcherUnhandledExceptionEventHandler(App_DispatcherUnhandledException);
-            //Task线程内未捕获异常处理事件　　　　　
-            TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
-            //非UI线程未捕获异常处理事件
-            AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
+            ////UI线程未捕获异常处理事件
+            //this.DispatcherUnhandledException += new DispatcherUnhandledExceptionEventHandler(App_DispatcherUnhandledException);
+            ////Task线程内未捕获异常处理事件　　　　　
+            //TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+            ////非UI线程未捕获异常处理事件
+            //AppDomain.CurrentDomain.UnhandledException += new UnhandledExceptionEventHandler(CurrentDomain_UnhandledException);
             SetLanguageDictionary();
             base.OnStartup(e);
         }
@@ -48,22 +49,48 @@ namespace Jvedio
         private void SetLanguageDictionary()
         {
             //设置语言
-            string language=Jvedio.Properties.Settings.Default.Language;
+            string language = Jvedio.Properties.Settings.Default.Language;
+            string lang = "en-US";
             switch (language)
             {
-                case "日本語":
-                    Jvedio.Language.Resources.Culture = new System.Globalization.CultureInfo("ja-JP");
-                    break;
+
                 case "中文":
-                    Jvedio.Language.Resources.Culture = new System.Globalization.CultureInfo("zh-CN");
+                    lang = "zh-CN";
                     break;
                 case "English":
-                    Jvedio.Language.Resources.Culture = new System.Globalization.CultureInfo("en-US");
+                    lang = "en-US";
+                    break;
+                case "日本語":
+                    lang = "ja-JP";
                     break;
                 default:
-                    Jvedio.Language.Resources.Culture = new System.Globalization.CultureInfo("en-US");
+                    //根据地区获取语言
+                    string name = System.Globalization.CultureInfo.CurrentCulture.Name.ToUpper();
+                    if (name == "ja-JP".ToUpper())
+                    {
+                        lang = "ja-JP";
+                        Jvedio.Properties.Settings.Default.Language = "日本語";
+                    }
+                    else if (name == "zh-CN".ToUpper())
+                    {
+                        lang = "zh-CN";
+                        Jvedio.Properties.Settings.Default.Language = "中文";
+                    }
+                    else if (name == "en-US".ToUpper())
+                    {
+                        lang = "en-US";
+                        Jvedio.Properties.Settings.Default.Language = "English";
+                    }
+                    else
+                    {
+                        lang = "en-US";
+                        Jvedio.Properties.Settings.Default.Language = "English";
+                    }
                     break;
             }
+            Jvedio.Properties.Settings.Default.Save();
+            Jvedio.Language.Resources.Culture = new System.Globalization.CultureInfo(lang);
+            ConfigHelper.Instance.SetLang(lang);//设置 handycontrol 的语言
         }
 
 
@@ -71,17 +98,17 @@ namespace Jvedio
         {
             try
             {
-                e.Handled = true; //把 Handled 属性设为true，表示此异常已处理，程序可以继续运行，不会强制退出      
+                //e.Handled = true; //把 Handled 属性设为true，表示此异常已处理，程序可以继续运行，不会强制退出      
                 Console.WriteLine(e.Exception.StackTrace);
                 Console.WriteLine(e.Exception.Message);
                 Logger.LogE(e.Exception);
             }
-            catch 
+            catch
             {
                 //此时程序出现严重异常，将强制结束退出
                 Console.WriteLine(e.Exception.StackTrace);
                 Console.WriteLine(e.Exception.Message);
-                MessageBox.Show("程序发生致命错误，将终止!");
+                MessageBox.Show(Jvedio.Language.Resources.ErrorToShutdown);
             }
 
         }
